@@ -493,6 +493,7 @@ var APIExtensions = []string{
 	"oidc_device_client_id",
 	"storage_nvme_tcp",
 	"project_replica_mode",
+	"operation_child_count",
 }
 
 // APIExtensionsCount returns the number of available API extensions.
