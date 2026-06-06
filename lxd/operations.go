@@ -511,14 +511,8 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 			}
 		}
 
-		// Load the operations.
-		var dbOps []dbCluster.Operation
-		if recursion < 2 {
-			dbOps, err = dbCluster.GetParentOperations(ctx, tx.Tx())
-		} else {
-			dbOps, err = query.Select[dbCluster.Operation](ctx, tx.Tx(), "")
-		}
-
+		// Load all operations (parents and children) so child counts can be populated.
+		dbOps, err := query.Select[dbCluster.Operation](ctx, tx.Tx(), "")
 		if err != nil {
 			return fmt.Errorf("Failed getting operations: %w", err)
 		}
@@ -526,10 +520,6 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 		// Map of child operations keyed by their parent operation ID.
 		childOps := make(map[int64][]*operations.Operation)
 		for _, dbOp := range dbOps {
-			// Omit child operations if not requested.
-			if dbOp.Row.Parent != nil && recursion < 2 {
-				continue
-			}
 
 			// Get operation project name if it has one.
 			operationProject := ""
@@ -596,6 +586,11 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 	apiOps := make([]*api.OperationFull, 0, len(parentOps))
 	for _, op := range parentOps {
 		_, apiOp := op.RenderFullWithoutProgress()
+		// Strip child details from list responses — only expose the count.
+		if recursion < 2 {
+			apiOp.Children = nil
+		}
+
 		apiOps = append(apiOps, apiOp)
 	}
 
