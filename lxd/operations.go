@@ -520,7 +520,6 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 		// Map of child operations keyed by their parent operation ID.
 		childOps := make(map[int64][]*operations.Operation)
 		for _, dbOp := range dbOps {
-
 			// Get operation project name if it has one.
 			operationProject := ""
 			if dbOp.Row.ProjectID != nil {
