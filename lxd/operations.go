@@ -584,10 +584,12 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 	// Render the operations.
 	apiOps := make([]*api.OperationFull, 0, len(parentOps))
 	for _, op := range parentOps {
-		_, apiOp := op.RenderFullWithoutProgress()
-		// Strip child details from list responses — only expose the count.
-		if recursion < 2 {
-			apiOp.Children = nil
+		var apiOp *api.OperationFull
+		if recursion >= 2 {
+			_, apiOp = op.RenderFullWithoutProgress()
+		} else {
+			_, retOp := op.RenderWithoutProgress()
+			apiOp = &api.OperationFull{Operation: *retOp}
 		}
 
 		apiOps = append(apiOps, apiOp)
