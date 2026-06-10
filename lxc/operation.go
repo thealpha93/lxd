@@ -251,7 +251,8 @@ func (c *cmdOperationListChildren) command() *cobra.Command {
     List child operations of the given operation UUID`)
 
 	cmd.Flags().StringVarP(&c.flagFormat, "format", "f", "table", cli.FormatStringFlagLabel("Format (csv|json|table|yaml|compact)"))
-	cmd.Flags().StringVarP(&c.flagColumns, "columns", "c", "itdscC", cli.FormatStringFlagLabel("Columns"))
+	listHelper := &cmdOperationList{}
+	cmd.Flags().StringVarP(&c.flagColumns, "columns", "c", cli.DefaultColumnString(listHelper.columns()), cli.FormatStringFlagLabel("Columns"))
 
 	cmd.RunE = c.run
 
@@ -276,8 +277,21 @@ func (c *cmdOperationListChildren) run(cmd *cobra.Command, args []string) error 
 		return err
 	}
 
+	clustered := resource.server.IsClustered()
+
 	listHelper := &cmdOperationList{global: c.global}
-	columns, err := cli.ParseShorthandColumns(c.flagColumns, listHelper.columns())
+	cols := listHelper.columns()
+	defaultColumns := cli.DefaultColumnString(cols)
+	if clustered {
+		cols = append(cols, cli.ShorthandColumn[api.Operation]{Shorthand: 'L', Name: "LOCATION", Data: listHelper.locationColumnData})
+		if c.flagColumns == defaultColumns {
+			c.flagColumns = cli.DefaultColumnString(cols)
+		}
+	} else if strings.ContainsAny(c.flagColumns, "L") {
+		return errors.New("Cannot use column shorthand char 'L' (LOCATION) when not clustered")
+	}
+
+	columns, err := cli.ParseShorthandColumns(c.flagColumns, cols)
 	if err != nil {
 		return err
 	}
