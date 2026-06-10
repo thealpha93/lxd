@@ -84,7 +84,7 @@ type Operation struct {
 	// Example: 2
 	//
 	// API extension: operation_child_count
-	ChildCount int `json:"child_count" yaml:"child_count"`
+	ChildCount int64 `json:"child_count" yaml:"child_count"`
 
 	// Which cluster member this record was found on
 	// Example: lxd01

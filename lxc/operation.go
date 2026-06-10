@@ -227,7 +227,7 @@ func (c *cmdOperationList) locationColumnData(op api.Operation) string {
 
 func (c *cmdOperationList) childrenColumnData(op api.Operation) string {
 	if op.ChildCount > 0 {
-		return strconv.Itoa(op.ChildCount)
+		return strconv.FormatInt(op.ChildCount, 10)
 	}
 
 	return "-"
