@@ -7039,9 +7039,17 @@
 						}
 					},
 					{
+						"volatile.powerflex.version": {
+							"defaultdesc": "Discovered version",
+							"longdesc": "This field is automatically populated after querying the PowerFlex version.\nIt cannot be set by the user.",
+							"scope": "global",
+							"shortdesc": "Software version of the PowerFlex array.",
+							"type": "string"
+						}
+					},
+					{
 						"volume.size": {
-							"defaultdesc": "`8GiB`",
-							"longdesc": "The size must be in multiples of 8 GiB.\nSee {ref}`storage-powerflex-limitations` for more information.",
+							"longdesc": "The size must be in multiples of 8 GiB for PowerFlex 4.\nStarting with PowerFlex 5, the size can be in multiples of 1 GiB.\nSee {ref}`storage-powerflex-limitations` for more information.",
 							"scope": "global",
 							"shortdesc": "Size/quota of the storage volume",
 							"type": "string"
@@ -7113,7 +7121,7 @@
 					{
 						"size": {
 							"defaultdesc": "same as `volume.size`",
-							"longdesc": "The size must be in multiples of 8 GiB.\nSee {ref}`storage-powerflex-limitations` for more information.",
+							"longdesc": "The size must be in multiples of 8 GiB for PowerFlex 4.\nStarting with PowerFlex 5, the size can be in multiples of 1 GiB.\nSee {ref}`storage-powerflex-limitations` for more information.",
 							"scope": "global",
 							"shortdesc": "Size/quota of the storage volume",
 							"type": "string"
@@ -7209,7 +7217,7 @@
 					{
 						"powerstore.mode": {
 							"defaultdesc": "the discovered mode",
-							"longdesc": "The mode to use to map PowerStore volumes to the local server.\nSupported value is `iscsi`.",
+							"longdesc": "The mode to use to map PowerStore volumes to the local server.\nSupported values are `iscsi` and `scsi/fc`.",
 							"scope": "global",
 							"shortdesc": "How volumes are mapped to the local server",
 							"type": "string"

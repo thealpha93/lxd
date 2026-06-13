@@ -494,6 +494,7 @@ var APIExtensions = []string{
 	"storage_nvme_tcp",
 	"project_replica_mode",
 	"operation_child_count",
+	"cluster_links_used_by",
 }
 
 // APIExtensionsCount returns the number of available API extensions.

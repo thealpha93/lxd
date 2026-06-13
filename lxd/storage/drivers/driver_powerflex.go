@@ -11,17 +11,25 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/ioprogress"
 	"github.com/canonical/lxd/shared/validate"
+	"github.com/canonical/lxd/shared/version"
 )
 
 // powerFlexDefaultUser represents the default PowerFlex user name.
 const powerFlexDefaultUser = "admin"
 
-// powerFlexDefaultSize represents the default PowerFlex volume size.
-const powerFlexDefaultSize = "8GiB"
+// powerFlex4DefaultSize represents the default PowerFlex volume size for PowerFlex 4.
+const powerFlex4DefaultSize = "8GiB"
 
-// powerFlexMinVolumeSizeBytes represents the minimal PowerFlex volume size in bytes.
+// powerFlex5DefaultSize represents the default PowerFlex volume size for PowerFlex 5.
+const powerFlex5DefaultSize = "1GiB"
+
+// powerFlex4MinVolumeSizeBytes represents the minimal PowerFlex volume size in bytes for PowerFlex 4.
 // This translates to 8 GiB.
-const powerFlexMinVolumeSizeBytes = 8589934592
+const powerFlex4MinVolumeSizeBytes = 8589934592
+
+// powerFlex5MinVolumeSizeBytes represents the minimal PowerFlex volume size in bytes for PowerFlex 5.
+// This translates to 1 GiB.
+const powerFlex5MinVolumeSizeBytes = 1073741824
 
 var powerflexSupportedConnectors = []string{
 	connectors.TypeNVMeTCP,
@@ -61,10 +69,9 @@ func (d *powerflex) load() error {
 	powerFlexVersion = strings.Join(versions, " / ")
 	powerFlexLoaded = true
 
-	// Load the kernel modules of the respective connector.
-	// Ignore if the modules cannot be loaded.
-	// Support for a specific connector is checked during pool creation.
-	// When a LXD host gets rebooted this ensures that the kernel modules are still loaded.
+	// Load the kernel modules of the respective connector, ignoring those that cannot be loaded.
+	// Support for a specific connector is checked during pool creation. However, this
+	// ensures that the kernel modules are loaded, even if the host has been rebooted.
 	connector, err := d.connector()
 	if err == nil {
 		_ = connector.LoadModules()
@@ -93,6 +100,22 @@ func (d *powerflex) isRemote() bool {
 	return true
 }
 
+// hasThinCloneSupport returns true if the PowerFlex system version supports thin clones.
+// This is true for all PowerFlex version starting with 5.0.
+func (d *powerflex) hasThinCloneSupport() bool {
+	powerFlexVersion, err := version.NewDottedVersion(d.config["volatile.powerflex.version"])
+	if err != nil {
+		return false
+	}
+
+	thinCloneSupportVersion, err := version.NewDottedVersion("5.0")
+	if err != nil {
+		return false
+	}
+
+	return powerFlexVersion.Compare(thinCloneSupportVersion) >= 0
+}
+
 // Info returns info about the driver and its environment.
 func (d *powerflex) Info() Info {
 	return Info{
@@ -109,8 +132,10 @@ func (d *powerflex) Info() Info {
 		DirectIO:                     true,
 		IOUring:                      true,
 		MountedRoot:                  false,
-		PopulateParentVolumeUUID:     false,
-		UUIDVolumeNames:              true,
+		// If parent volume UUID is present we know a snapshot [Volume] is an actual snapshot.
+		// In PowerFlex 5 when creating a thin clone of a snapshot, we unset the parent volume UUID to differentiate between snapshots and thin clones.
+		PopulateParentVolumeUUID: true,
+		UUIDVolumeNames:          true,
 	}
 }
 
@@ -146,11 +171,23 @@ func (d *powerflex) FillConfig() error {
 		}
 	}
 
-	// PowerFlex volumes have to be at least 8GiB in size.
-	if d.config["volume.size"] == "" {
-		d.config["volume.size"] = powerFlexDefaultSize
+	// Retrieve and store the PowerFlex system version.
+	version, err := d.client().getVersion()
+	if err != nil {
+		return err
 	}
 
+	userProvidedVersion := d.config["volatile.powerflex.version"]
+
+	// Exit if there already is a different PowerFlex version set by the user as this field gets auto-populated.
+	// This ensures we don't overwrite a user-provided value.
+	// We have to allow setting it to support creating pools in a cluster which will trigger the creation of each member
+	// using the config which is provided in the final pool create call.
+	if userProvidedVersion != "" && userProvidedVersion != version {
+		return errors.New(`Cannot set "volatile.powerflex.version" manually`)
+	}
+
+	d.config["volatile.powerflex.version"] = version
 	return nil
 }
 
@@ -287,14 +324,23 @@ func (d *powerflex) Validate(config map[string]string) error {
 		//  scope: global
 		"powerflex.snapshot_copy": validate.Optional(validate.IsBool),
 		// lxdmeta:generate(entities=storage-powerflex; group=pool-conf; key=volume.size)
-		// The size must be in multiples of 8 GiB.
+		// The size must be in multiples of 8 GiB for PowerFlex 4.
+		// Starting with PowerFlex 5, the size can be in multiples of 1 GiB.
 		// See {ref}`storage-powerflex-limitations` for more information.
 		// ---
 		//  type: string
-		//  defaultdesc: `8GiB`
 		//  shortdesc: Size/quota of the storage volume
 		//  scope: global
-		"volume.size": validate.Optional(validate.IsMultipleOfUnit("8GiB")),
+		"volume.size": validate.Optional(validate.IsMultipleOfUnit("1GiB")),
+		// lxdmeta:generate(entities=storage-powerflex; group=pool-conf; key=volatile.powerflex.version)
+		// This field is automatically populated after querying the PowerFlex version.
+		// It cannot be set by the user.
+		// ---
+		//  type: string
+		//  defaultdesc: Discovered version
+		//  shortdesc: Software version of the PowerFlex array.
+		//  scope: global
+		"volatile.powerflex.version": validate.Optional(validate.IsDottedVersion),
 	}
 
 	err := d.validatePool(config, rules, d.commonVolumeRules())
@@ -302,14 +348,20 @@ func (d *powerflex) Validate(config map[string]string) error {
 		return err
 	}
 
-	newMode := config["powerflex.mode"]
-	oldMode := d.config["powerflex.mode"]
-
 	// Ensure powerflex.mode cannot be changed to avoid leaving volume mappings
 	// and to prevent disturbing running instances.
-	if oldMode != "" && oldMode != newMode {
-		return errors.New("PowerFlex mode cannot be changed")
+	// Ensure volatile.powerflex.version cannot be changed.
+	immutableKeys := []string{"powerflex.mode", "volatile.powerflex.version"}
+	for _, key := range immutableKeys {
+		newVal := config[key]
+		oldVal := d.config[key]
+
+		if oldVal != "" && oldVal != newVal {
+			return fmt.Errorf("%q cannot be changed", key)
+		}
 	}
+
+	newMode := config["powerflex.mode"]
 
 	// Check if the selected PowerFlex mode is supported on this node.
 	// Also when forming the storage pool on a LXD cluster, the mode
@@ -358,16 +410,47 @@ func (d *powerflex) GetResources() (*api.ResourcesStoragePool, error) {
 		return nil, err
 	}
 
-	stats, err := d.client().getStoragePoolStatistics(pool.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	used := stats.NetCapacityInUseInKb * 1024
-
+	client := d.client()
 	res := &api.ResourcesStoragePool{}
-	res.Space.Total = stats.NetUnusedCapacityInKb*1024 + used
-	res.Space.Used = used
+
+	if !d.hasThinCloneSupport() {
+		// PowerFlex 4 allows querying stats from the pool directly.
+		stats, err := client.getStoragePoolStatistics(pool.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		used := stats.NetCapacityInUseInKb * 1024
+
+		res.Space.Total = stats.NetUnusedCapacityInKb*1024 + used
+		res.Space.Used = used
+	} else {
+		// PowerFlex 5 requires using the new metrics endpoint.
+		metrics, err := client.getStoragePoolMetrics(pool.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(metrics.Resources) != 1 {
+			return nil, fmt.Errorf("Unexpected number of resources in metrics response for pool %q", pool.ID)
+		}
+
+		for _, metric := range metrics.Resources[0].Metrics {
+			if len(metric.Values) != 1 {
+				return nil, fmt.Errorf("Unexpected number of values in metrics response for pool %q and metric %q", pool.ID, metric.Name)
+			}
+
+			if metric.Name == "physical_total" {
+				res.Space.Total = metric.Values[0]
+				continue
+			}
+
+			if metric.Name == "physical_used" {
+				res.Space.Used = metric.Values[0]
+				continue
+			}
+		}
+	}
 
 	return res, nil
 }
@@ -419,7 +502,11 @@ func (d *powerflex) MigrationTypes(contentType ContentType, refresh bool, copySn
 }
 
 // roundVolumeBlockSizeBytes rounds the given size (in bytes) up to the next
-// multiple of 8 GiB, which is the minimum allocation unit on PowerFlex.
+// multiple of 1 or 8 GiB, which is the minimum allocation unit on PowerFlex.
 func (d *powerflex) roundVolumeBlockSizeBytes(_ Volume, sizeBytes int64) int64 {
-	return roundAbove(powerFlexMinVolumeSizeBytes, sizeBytes)
+	if d.hasThinCloneSupport() {
+		return roundAbove(powerFlex5MinVolumeSizeBytes, sizeBytes)
+	}
+
+	return roundAbove(powerFlex4MinVolumeSizeBytes, sizeBytes)
 }

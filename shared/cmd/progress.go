@@ -83,14 +83,24 @@ func (p *ProgressRenderer) Done(msg string) {
 // Update changes the status message to the provided string.
 func (p *ProgressRenderer) Update(status string) {
 	// Wait if needed
-	timeout := time.Until(p.wait)
+	p.lock.Lock()
+	wait := p.wait
+	p.lock.Unlock()
+
+	timeout := time.Until(wait)
 	if timeout.Seconds() > 0 {
 		time.Sleep(timeout)
 	}
 
-	// Acquire rendering lock
+	// Re-acquire rendering lock
 	p.lock.Lock()
 	defer p.lock.Unlock()
+
+	// Another thread might have called Warn() extending p.wait further than the
+	// time we waited for. Don't overwrite the warning message until it expires.
+	if time.Since(p.wait) < 0 {
+		return
+	}
 
 	// Check if we're already done
 	if p.done {
@@ -106,9 +116,9 @@ func (p *ProgressRenderer) Update(status string) {
 	if p.terminal == 0 {
 		if !termios.IsTerminal(int(os.Stdout.Fd())) {
 			p.terminal = -1
+		} else {
+			p.terminal = 1
 		}
-
-		p.terminal = 1
 	}
 
 	if p.terminal != 1 {
@@ -172,7 +182,7 @@ func (p *ProgressRenderer) Warn(status string, timeout time.Duration) {
 	fmt.Print(msg)
 }
 
-// UpdateProgress is a helper to update the status using an iopgress instance.
+// UpdateProgress is a helper to update the status using an ioprogress instance.
 func (p *ProgressRenderer) UpdateProgress(progress ioprogress.ProgressData) {
 	p.Update(progress.Text)
 }

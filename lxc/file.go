@@ -358,14 +358,6 @@ func (c *cmdFileEdit) command() *cobra.Command {
 
 	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
-			return c.global.cmpTopLevelResource("instance", toComplete)
-		}
-
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-
-	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) == 0 {
 			return c.global.cmpFiles(toComplete, false)
 		}
 
@@ -1055,7 +1047,7 @@ func (c *cmdFile) recursivePushFile(d lxd.InstanceServer, inst string, source st
 
 	sendFile := func(p string, fInfo os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("Failed walking path for %s: %s", p, err)
+			return fmt.Errorf("Failed walking path for %q: %w", p, err)
 		}
 
 		// Detect unsupported files

@@ -434,10 +434,6 @@ func (d *powerstore) CreateVolumeFromCopy(vol VolumeCopy, srcVol VolumeCopy, all
 		fsVol := NewVolumeCopy(vol.NewVMBlockFilesystemVolume(), fsVolSnapshots...)
 		srcFSVol := NewVolumeCopy(srcVol.NewVMBlockFilesystemVolume(), srcFsVolSnapshots...)
 
-		// Ensure parent UUID is retained for the filesystem volumes.
-		fsVol.SetParentUUID(vol.parentUUID)
-		srcFSVol.SetParentUUID(srcVol.parentUUID)
-
 		err := d.CreateVolumeFromCopy(fsVol, srcFSVol, false, progressReporter)
 		if err != nil {
 			return err
@@ -708,9 +704,7 @@ func (d *powerstore) RestoreVolume(vol Volume, snapVol Volume, progressReporter 
 	// For VMs, also restore the filesystem volume.
 	if vol.IsVMBlock() {
 		fsVol := vol.NewVMBlockFilesystemVolume()
-
 		snapFSVol := snapVol.NewVMBlockFilesystemVolume()
-		snapFSVol.SetParentUUID(snapVol.parentUUID)
 
 		err := d.RestoreVolume(fsVol, snapFSVol, progressReporter)
 		if err != nil {
@@ -1110,9 +1104,8 @@ func (d *powerstore) createVolumeSnapshot(snapVol Volume, snapshotVMfilesystem b
 	// For VMs, create a snapshot of the filesystem volume too.
 	// Skip if snapshotVMfilesystem is false to prevent overwriting separately copied volumes.
 	if snapVol.IsVMBlock() && snapshotVMfilesystem {
-		// Get FS volume and set parent volume UUID.
+		// Get FS volume.
 		fsVol := snapVol.NewVMBlockFilesystemVolume()
-		fsVol.SetParentUUID(snapVol.parentUUID)
 
 		err := d.CreateVolumeSnapshot(fsVol, progressReporter)
 		if err != nil {
@@ -1166,7 +1159,6 @@ func (d *powerstore) DeleteVolumeSnapshot(snapVol Volume, progressReporter iopro
 	// For VM images, delete the filesystem volume too.
 	if snapVol.IsVMBlock() {
 		fsVol := snapVol.NewVMBlockFilesystemVolume()
-		fsVol.SetParentUUID(snapVol.parentUUID)
 
 		err := d.DeleteVolumeSnapshot(fsVol, progressReporter)
 		if err != nil {
@@ -1270,7 +1262,6 @@ func (d *powerstore) MountVolumeSnapshot(snapVol Volume, progressReporter ioprog
 	// For VMs, also clone the filesystem snapshot.
 	if snapVol.IsVMBlock() {
 		snapFsVol := snapVol.NewVMBlockFilesystemVolume()
-		snapFsVol.SetParentUUID(snapVol.parentUUID)
 
 		fsSnapVolClone, err := d.newMountableSnapshotVolume(snapFsVol)
 		if err != nil {
@@ -1349,7 +1340,6 @@ func (d *powerstore) UnmountVolumeSnapshot(snapVol Volume, progressReporter iopr
 	// For VMs, also delete the filesystem clone.
 	if snapVol.IsVMBlock() {
 		snapFsVol := snapVol.NewVMBlockFilesystemVolume()
-		snapFsVol.SetParentUUID(snapVol.parentUUID)
 
 		fsSnapVolClone, err := d.newMountableSnapshotVolume(snapFsVol)
 		if err != nil {
@@ -1524,15 +1514,11 @@ func (d *powerstore) ensureHost() (hostID string, cleanup revert.Hook, err error
 		}
 
 		// The storage host entry with a qualified name of the current LXD host does not exist.
-		// Therefore, create a new one and name it after the server name.
-		serverName, err := ResolveServerName(d.state.ServerName)
+		// Therefore, create a new one and name it after the resolved server name.
+		hostname, err := ResolveServerNameWithConnectorType(d.state.ServerName, connector.Type())
 		if err != nil {
 			return "", nil, err
 		}
-
-		// Append the mode to the server name because storage array does not allow mixing
-		// NQNs, IQNs, and WWNs for a single host.
-		hostname := serverName + "-" + connector.Type()
 
 		hostID, err = client.CreateHost(hostname, connector.Type(), qn)
 		if err != nil {
@@ -1640,8 +1626,8 @@ func (d *powerstore) mapVolume(vol Volume) (cleanup revert.Hook, err error) {
 
 	reverter.Add(cleanup)
 
-	// Ensure the volume is connected to the host.
-	connCreated, err := client.AttachVolumeToHost(volID, hostID)
+	// Ensure the volume is connected to the host, obtaining the assigned LUN.
+	lun, connCreated, err := client.AttachVolumeToHost(volID, hostID)
 	if err != nil {
 		return nil, fmt.Errorf("Failed attaching volume %q to host: %w", vol.name, err)
 	}
@@ -1661,7 +1647,13 @@ func (d *powerstore) mapVolume(vol Volume) (cleanup revert.Hook, err error) {
 
 	// Connect to the array.
 	for qualifiedName, addresses := range targets {
-		connReverter, err := connector.Connect(d.state.ShutdownCtx, qualifiedName, addresses...)
+		var connReverter revert.Hook
+		if connector.Transport() == connectors.TransportFC {
+			connReverter, err = connector.Connect(d.state.ShutdownCtx, qualifiedName, strconv.Itoa(lun))
+		} else {
+			connReverter, err = connector.Connect(d.state.ShutdownCtx, qualifiedName, addresses...)
+		}
+
 		if err != nil {
 			return nil, err
 		}

@@ -6357,12 +6357,21 @@ to be placed on the socket I/O.
 
 ```
 
+```{config:option} volatile.powerflex.version storage-powerflex-pool-conf
+:defaultdesc: "Discovered version"
+:scope: "global"
+:shortdesc: "Software version of the PowerFlex array."
+:type: "string"
+This field is automatically populated after querying the PowerFlex version.
+It cannot be set by the user.
+```
+
 ```{config:option} volume.size storage-powerflex-pool-conf
-:defaultdesc: "`8GiB`"
 :scope: "global"
 :shortdesc: "Size/quota of the storage volume"
 :type: "string"
-The size must be in multiples of 8 GiB.
+The size must be in multiples of 8 GiB for PowerFlex 4.
+Starting with PowerFlex 5, the size can be in multiples of 1 GiB.
 See {ref}`storage-powerflex-limitations` for more information.
 ```
 
@@ -6428,7 +6437,8 @@ Enable this option to allow the volume to be attached to multiple isolated insta
 :scope: "global"
 :shortdesc: "Size/quota of the storage volume"
 :type: "string"
-The size must be in multiples of 8 GiB.
+The size must be in multiples of 8 GiB for PowerFlex 4.
+Starting with PowerFlex 5, the size can be in multiples of 1 GiB.
 See {ref}`storage-powerflex-limitations` for more information.
 ```
 
@@ -6522,7 +6532,7 @@ Specify either a cron expression (`<minute> <hour> <dom> <month> <dow>`), a comm
 :shortdesc: "How volumes are mapped to the local server"
 :type: "string"
 The mode to use to map PowerStore volumes to the local server.
-Supported value is `iscsi`.
+Supported values are `iscsi` and `scsi/fc`.
 ```
 
 ```{config:option} powerstore.target storage-powerstore-pool-conf

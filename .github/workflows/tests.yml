@@ -510,7 +510,7 @@ jobs:
       - name: Tmate debugging session
         if: ${{ failure() && inputs.tmate-debug }}
         timeout-minutes: 30
-        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3.23
+        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3.24
         with:
           # Never allow public SSH access
           limit-access-to-actor: true
@@ -546,7 +546,7 @@ jobs:
           - devlxd-container
           - devlxd-vm
           - docker
-          - efi-vars-editor-vm
+          - efi-vm
           - lxd-installer
           - lxd-user
           - interception
@@ -554,8 +554,7 @@ jobs:
           - network-ovn ovn:deb
           - network-ovn ovn:latest/edge
           - network-routed
-          # XXX: Skip pylxd tests until https://github.com/canonical/pylxd/pull/677 is merged.
-          #- pylxd
+          - pylxd
           - qemu-external-vm
           - snapd
           - storage-buckets
@@ -812,7 +811,7 @@ jobs:
       - name: Tmate debugging session
         if: ${{ failure() && inputs.tmate-debug }}
         timeout-minutes: 30
-        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3.23
+        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3.24
         with:
           # Never allow public SSH access
           limit-access-to-actor: true
