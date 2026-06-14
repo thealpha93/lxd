@@ -3582,6 +3582,7 @@ Renames storage pool NVMe/TCP mode from `nvme` to `nvme/tcp`.
 
 Adds a `replica_mode` field to projects and a new `PUT /1.0/projects/<name>/state` endpoint for promoting and demoting projects between leader and standby modes for replication.
 
+(extension-operation-child-count)=
 ## `operation_child_count`
 
 Adds a `child_count` field to the `Operation` struct, indicating the number of child operations. This allows clients to determine whether an operation has children without requiring `recursion=2`.
