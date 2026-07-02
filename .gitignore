@@ -30,3 +30,5 @@ doc/**/__pycache__
 
 # Workshop
 .workshop.lock
+config.bat
+node_modules
