@@ -5,6 +5,7 @@ Displays version, revision, architecture, size, and optionally links to git comm
 and download URLs. Output format is auto-detected (terminal hyperlinks for TTY, plain text
 when piped), but can be explicitly set via --format.
 """
+import shared.session
 from typing import get_args, Literal, Optional
 import argparse
 import json
